@@ -1,0 +1,55 @@
+{
+  "shopName": "Demo Tea",
+  "currency": "CAD",
+  "maxQty": 20,
+  "items": [
+    { "id": "pearl-milk-tea", "name": { "zh": "珍珠奶茶", "en": "Pearl Milk Tea" }, "price": 550, "aliases": ["波霸奶茶", "boba milk tea", "bubble tea"], "options": ["sugar", "ice", "milk"] },
+    { "id": "taro-milk-tea", "name": { "zh": "芋泥波波奶茶", "en": "Taro Boba Milk Tea" }, "price": 625, "aliases": ["芋泥奶茶", "芋头奶茶", "taro milk tea"], "options": ["sugar", "ice", "milk"] },
+    { "id": "brown-sugar-milk", "name": { "zh": "黑糖珍珠鲜奶", "en": "Brown Sugar Boba Milk" }, "price": 650, "aliases": ["黑糖鲜奶", "黑糖波波", "brown sugar milk"], "options": ["ice", "milk"] },
+    { "id": "mango-pomelo-sago", "name": { "zh": "杨枝甘露", "en": "Mango Pomelo Sago" }, "price": 675, "aliases": ["mango sago"], "options": ["sugar", "ice"], "addons": false },
+    { "id": "jasmine-green-tea", "name": { "zh": "茉莉绿茶", "en": "Jasmine Green Tea" }, "price": 450, "aliases": ["绿茶", "green tea"], "options": ["sugar", "ice"] },
+    { "id": "lemon-green-tea", "name": { "zh": "柠檬绿茶", "en": "Lemon Green Tea" }, "price": 475, "aliases": ["柠檬茶", "lemon tea"], "options": ["sugar", "ice"] },
+    { "id": "matcha-latte", "name": { "zh": "抹茶拿铁", "en": "Matcha Latte" }, "price": 600, "aliases": ["matcha"], "options": ["sugar", "ice", "milk"], "soldOut": true }
+  ],
+  "optionGroups": [
+    {
+      "id": "sugar",
+      "name": { "zh": "甜度", "en": "Sugar" },
+      "default": "100",
+      "choices": [
+        { "id": "0", "name": { "zh": "无糖", "en": "No sugar" } },
+        { "id": "30", "name": { "zh": "三分糖", "en": "30% sugar" } },
+        { "id": "50", "name": { "zh": "半糖", "en": "Half sugar" } },
+        { "id": "70", "name": { "zh": "七分糖", "en": "70% sugar" } },
+        { "id": "100", "name": { "zh": "正常糖", "en": "Regular sugar" } }
+      ]
+    },
+    {
+      "id": "ice",
+      "name": { "zh": "冰量", "en": "Ice" },
+      "default": "regular",
+      "choices": [
+        { "id": "none", "name": { "zh": "去冰", "en": "No ice" } },
+        { "id": "less", "name": { "zh": "少冰", "en": "Less ice" } },
+        { "id": "regular", "name": { "zh": "正常冰", "en": "Regular ice" } },
+        { "id": "hot", "name": { "zh": "热", "en": "Hot" } }
+      ]
+    },
+    {
+      "id": "milk",
+      "name": { "zh": "奶", "en": "Milk" },
+      "default": "regular",
+      "choices": [
+        { "id": "regular", "name": { "zh": "牛奶", "en": "Regular milk" } },
+        { "id": "oat", "name": { "zh": "燕麦奶", "en": "Oat milk" }, "price": 50 }
+      ]
+    }
+  ],
+  "addons": [
+    { "id": "pearls", "name": { "zh": "珍珠", "en": "Pearls" }, "price": 75, "aliases": ["波霸", "boba"] },
+    { "id": "coconut-jelly", "name": { "zh": "椰果", "en": "Coconut Jelly" }, "price": 75 },
+    { "id": "pudding", "name": { "zh": "布丁", "en": "Pudding" }, "price": 100 },
+    { "id": "taro-balls", "name": { "zh": "芋圆", "en": "Taro Balls" }, "price": 100 },
+    { "id": "cheese-foam", "name": { "zh": "芝士奶盖", "en": "Cheese Foam" }, "price": 125, "aliases": ["奶盖"] }
+  ]
+}

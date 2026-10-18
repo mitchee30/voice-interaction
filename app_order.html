@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>语音点单演示</title>
+<style>
+  :root {
+    --bg: #faf6f1;
+    --panel: #fffdf9;
+    --side: #f3ebe1;
+    --ink: #2b211a;
+    --muted: #7a6a5c;
+    --line: #e6d9ca;
+    --accent: #8a4f2a;
+    --accent-ink: #fff;
+    --me: #8a4f2a;
+    --me-ink: #fff;
+    --bot: #fff;
+    --ok: #2f8a4c;
+    --warn: #c0662b;
+    --live: #d0402b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1b1714; --panel: #231e1a; --side: #201b17; --ink: #f1e8df; --muted: #b3a291;
+      --line: #3a312a; --accent: #d08a5c; --accent-ink: #1b1714; --me: #d08a5c; --me-ink: #1b1714; --bot: #2b2420;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    display: grid; grid-template-columns: 320px 1fr; height: 100dvh;
+  }
+  aside { background: var(--side); border-right: 1px solid var(--line); padding: 20px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
+  .brand { font-weight: 700; font-size: 18px; }
+  .brand small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); }
+  button { font: inherit; cursor: pointer; }
+  #toggle {
+    width: 100%; padding: 12px 14px; border: 0; border-radius: 12px;
+    background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 15px;
+  }
+  #toggle.on { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; min-height: 22px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); flex: none; }
+  .st-idle .dot { background: var(--ok); }
+  .st-hearing .dot { background: var(--live); animation: pulse 0.9s infinite; }
+  .st-thinking .dot { background: var(--warn); animation: pulse 0.6s infinite; }
+  .st-speaking .dot { background: var(--accent); animation: pulse 1.2s infinite; }
+  .st-connecting .dot { background: var(--warn); }
+  @keyframes pulse { 50% { transform: scale(1.5); opacity: .5; } }
+  .note { font-size: 13px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .note:empty { display: none; }
+  .row { display: flex; gap: 6px; }
+  .seg button { flex: 1; padding: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; }
+  .cart { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .cart li { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .cart .top { display: flex; justify-content: space-between; gap: 8px; }
+  .cart .ctl { display: flex; gap: 6px; align-items: center; margin-top: 4px; font-size: 13px; color: var(--muted); }
+  .cart .ctl button { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line); background: transparent; color: var(--ink); }
+  .cart .empty { color: var(--muted); font-size: 14px; background: none; border: 0; padding: 0; }
+  .total { display: flex; justify-content: space-between; font-weight: 600; margin-top: 10px; }
+  .checkout { margin-top: 10px; width: 100%; padding: 10px; border-radius: 10px; border: 1px dashed var(--line); background: transparent; color: var(--muted); }
+  details { font-size: 14px; }
+  details ul { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 4px; }
+  details li { display: flex; justify-content: space-between; gap: 8px; }
+  details li.out { color: var(--muted); text-decoration: line-through; }
+  main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  header { padding: 18px 24px 10px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+  #chat { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: min(560px, 85%); padding: 10px 14px; border-radius: 16px; white-space: pre-wrap; word-break: break-word; }
+  .msg.me { align-self: flex-end; background: var(--me); color: var(--me-ink); border-bottom-right-radius: 4px; }
+  .msg.bot { align-self: flex-start; background: var(--bot); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .msg.bot.cut::after { content: " （被打断）"; color: var(--muted); font-size: 13px; }
+  .msg.sys { align-self: center; color: var(--muted); font-size: 13px; background: none; padding: 2px; }
+  .hints { display: flex; flex-wrap: wrap; gap: 8px; }
+  .hints button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 6px 12px; font-size: 14px; }
+  form { display: flex; gap: 8px; padding: 12px 24px 18px; border-top: 1px solid var(--line); background: var(--bg); }
+  form input { flex: 1; min-width: 0; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; }
+  form button { padding: 0 18px; border-radius: 12px; border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  @media (max-width: 760px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100dvh; }
+    aside { border-right: 0; border-bottom: 1px solid var(--line); padding: 16px; gap: 12px; }
+    header, #chat, form { padding-left: 16px; padding-right: 16px; }
+    main { min-height: 70dvh; }
+    details { display: none; }
+  }
+</style>
+</head>
+<body>
+<aside>
+  <div class="brand">🧋 <span id="shop">语音点单</span><small>全双工语音点单演示</small></div>
+  <button id="toggle" type="button">▶️ 开启全双工语音交互</button>
+  <div class="status" id="status"><span class="dot"></span><span id="statusText">未开启</span></div>
+  <div class="note" id="note"></div>
+  <div class="row seg" role="group" aria-label="语言">
+    <button type="button" data-lang="zh" aria-pressed="true">中文</button>
+    <button type="button" data-lang="en" aria-pressed="false">English</button>
+  </div>
+  <section>
+    <h2>购物车</h2>
+    <ul class="cart" id="cart"></ul>
+    <div class="total"><span>合计（不含税）</span><span id="total">$0.00</span></div>
+    <button class="checkout" type="button" disabled>去结账（演示版不能下单）</button>
+  </section>
+  <details open>
+    <summary>菜单</summary>
+    <ul id="menu"></ul>
+  </details>
+</aside>
+<main>
+  <header>
+    <h1>智能语音点单</h1>
+    <p>直接开口说，说完自动发送；AI 说话的时候你一开口它就停下来听你说。</p>
+  </header>
+  <div id="chat" aria-live="polite">
+    <div class="hints" id="hints"></div>
+  </div>
+  <form id="form" autocomplete="off">
+    <input id="input" placeholder="也可以打字，比如：两杯珍珠奶茶，一杯少冰" aria-label="输入点单内容">
+    <button type="submit">发送</button>
+  </form>
+</main>
+
+<script type="module">
+import { VoiceAssistantClient } from '/voice/audio_client.js';
+
+const LOCAL_VENDOR = "__LOCAL_VENDOR__";
+const params = new URLSearchParams(location.search);
+const $ = (id) => document.getElementById(id);
+const log = (window.__voiceLog = []);
+
+let menu = null;
+let cart = [];
+let lang = 'zh';
+let botBubble = null;
+
+const T = {
+  zh: {
+    on: '⏹ 关闭语音交互', off: '▶️ 开启全双工语音交互',
+    off_s: '未开启', connecting: '连接中…', idle: '正在听，直接说就行', hearing: '你在说话…', thinking: '正在想…', speaking: '正在说，开口就能打断',
+    idle_text: '已连接，打字点单', empty: '还没有饮品', mock: '演示模式：服务器没有配置 OPENAI_API_KEY，只能打字，回复用浏览器朗读。',
+    openai: '实时语音：OpenAI 识别 + 回答 + 朗读。', mic: '麦克风打不开，可以先打字点单。',
+    hints: ['两杯珍珠奶茶，一杯少冰', '芋泥波波奶茶换成燕麦奶', '杨枝甘露去冰半糖', '有什么推荐', '就这些了'],
+  },
+  en: {
+    on: '⏹ Stop voice', off: '▶️ Start full-duplex voice',
+    off_s: 'Off', connecting: 'Connecting…', idle: 'Listening, just talk', hearing: 'You are talking…', thinking: 'Thinking…', speaking: 'Talking, speak to interrupt',
+    idle_text: 'Connected, type to order', empty: 'No drinks yet', mock: 'Demo mode: no OPENAI_API_KEY on the server, typing only; replies are read by the browser.',
+    openai: 'Live voice: OpenAI speech recognition, answers and speech.', mic: 'Could not open the microphone. You can still type.',
+    hints: ['Two pearl milk teas, one with less ice', 'Make the taro one oat milk', 'Mango pomelo sago, no ice, half sugar', 'What do you recommend?', "That's all"],
+  },
+};
+const t = (k) => T[lang][k];
+
+// ---------- menu + cart (client copy; the shop's server re-prices at checkout) ----------
+const nm = (v) => (typeof v === 'string' ? v : (lang === 'en' ? v.en || v.zh : v.zh || v.en));
+const money = (c) => `$${(c / 100).toFixed(2)}`;
+function unitPrice(line) {
+  const item = menu.items.find((i) => i.id === line.itemId);
+  if (!item) return 0;
+  let p = item.price;
+  for (const [g, c] of Object.entries(line.options || {})) p += menu.optionGroups.find((x) => x.id === g)?.choices.find((x) => x.id === c)?.price || 0;
+  for (const a of line.addons || []) p += menu.addons.find((x) => x.id === a)?.price || 0;
+  return p;
+}
+function label(line) {
+  const item = menu.items.find((i) => i.id === line.itemId);
+  const bits = [];
+  for (const [g, c] of Object.entries(line.options || {})) {
+    const grp = menu.optionGroups.find((x) => x.id === g);
+    if (grp && c !== grp.default) bits.push(nm(grp.choices.find((x) => x.id === c)?.name || c));
+  }
+  for (const a of line.addons || []) bits.push((lang === 'en' ? '+' : '加') + nm(menu.addons.find((x) => x.id === a)?.name || a));
+  if (line.note) bits.push(line.note);
+  return { name: item ? nm(item.name) : line.itemId, extra: bits.join(lang === 'en' ? ', ' : '，') };
+}
+function renderCart() {
+  const ul = $('cart');
+  ul.innerHTML = '';
+  if (!cart.length) {
+    ul.innerHTML = `<li class="empty">${t('empty')}</li>`;
+  }
+  for (const line of cart) {
+    const { name, extra } = label(line);
+    const li = document.createElement('li');
+    li.dataset.line = line.id;
+    li.innerHTML = `<div class="top"><strong></strong><span>${money(unitPrice(line) * line.qty)}</span></div>
+      <div class="ctl"><button type="button" data-d="-1" aria-label="减少">−</button><span class="q">×${line.qty}</span><button type="button" data-d="1" aria-label="增加">+</button><span class="x"></span></div>`;
+    li.querySelector('strong').textContent = name;
+    li.querySelector('.x').textContent = extra;
+    li.querySelectorAll('button').forEach((b) =>
+      b.addEventListener('click', () => {
+        line.qty += Number(b.dataset.d);
+        if (line.qty < 1) cart = cart.filter((l) => l !== line);
+        renderCart();
+        client.syncCart(); // tell the AI the customer changed the cart by hand
+      }),
+    );
+    ul.appendChild(li);
+  }
+  $('total').textContent = money(cart.reduce((s, l) => s + unitPrice(l) * l.qty, 0));
+}
+function renderMenu() {
+  $('shop').textContent = menu.shopName || 'Tea';
+  const ul = $('menu');
+  ul.innerHTML = '';
+  for (const it of menu.items) {
+    const li = document.createElement('li');
+    if (it.soldOut) li.className = 'out';
+    li.innerHTML = '<span></span><span></span>';
+    li.children[0].textContent = nm(it.name);
+    li.children[1].textContent = it.soldOut ? (lang === 'en' ? 'sold out' : '售罄') : money(it.price);
+    ul.appendChild(li);
+  }
+}
+function applyCartOp(op) {
+  if (op.op === 'add' || op.op === 'update') {
+    const i = cart.findIndex((l) => l.id === op.line.id);
+    if (i >= 0) cart[i] = op.line;
+    else cart.push(op.line);
+  } else if (op.op === 'remove') {
+    cart = cart.filter((l) => l.id !== op.lineId);
+  }
+  renderCart();
+}
+
+// ---------- chat ----------
+function bubble(cls, text) {
+  const d = document.createElement('div');
+  d.className = `msg ${cls}`;
+  d.textContent = text;
+  $('chat').appendChild(d);
+  $('chat').scrollTop = $('chat').scrollHeight;
+  return d;
+}
+function renderHints() {
+  const box = $('hints');
+  box.innerHTML = '';
+  for (const h of t('hints')) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = h;
+    b.addEventListener('click', () => sendText(h));
+    box.appendChild(b);
+  }
+}
+
+// ---------- voice client ----------
+const client = new VoiceAssistantClient({
+  lang,
+  debug: params.has('debug'),
+  voice: !params.has('novoice'),
+  assets: LOCAL_VENDOR ? { ort: '/voice/vendor/ort/', vad: '/voice/vendor/vad/' } : undefined,
+  getCart: () => cart,
+  onCart: (op) => {
+    log.push(['cart', op]);
+    applyCartOp(op);
+  },
+  onReady: (info) => {
+    log.push(['ready', info]);
+    $('note').textContent = info.provider === 'mock' ? t('mock') : t('openai');
+  },
+  onStateChange: (s) => {
+    log.push(['state', s]);
+    document.getElementById('status').className = `status st-${s}`;
+    const voiceOn = client.voiceEnabled;
+    $('statusText').textContent = s === 'off' ? t('off_s') : s === 'idle' && !voiceOn ? t('idle_text') : t(s);
+    $('toggle').textContent = s === 'off' ? t('off') : t('on');
+    $('toggle').classList.toggle('on', s !== 'off');
+  },
+  onUserSpeech: (text, turn) => {
+    log.push(['user', turn, text]);
+    if (!pendingTyped.delete(turn)) bubble('me', text);
+    botBubble = null;
+  },
+  onAssistantReplyStart: (turn) => {
+    botBubble = bubble('bot', '');
+    botBubble.dataset.turn = turn;
+  },
+  onAssistantReplyChunk: (turn, text) => {
+    if (!botBubble || botBubble.dataset.turn != turn) return;
+    botBubble.textContent += text;
+    $('chat').scrollTop = $('chat').scrollHeight;
+  },
+  onAssistantReplyEnd: (turn, text) => {
+    log.push(['reply', turn, text]);
+    if (botBubble && botBubble.dataset.turn == turn) botBubble.textContent = text;
+  },
+  onBargeIn: (turn) => {
+    log.push(['bargein', turn]);
+    const b = document.querySelector(`.msg.bot[data-turn="${turn}"]`);
+    if (b) b.classList.add('cut');
+  },
+  onError: (e) => {
+    log.push(['error', e]);
+    if (e.code === 'mic' || e.code === 'mic_denied') $('note').textContent = t('mic');
+    else bubble('sys', e.message || 'error');
+  },
+});
+window.__client = client;
+
+// typed messages show right away instead of waiting for the transcript
+const pendingTyped = new Set();
+async function sendText(text) {
+  text = text.trim();
+  if (!text) return;
+  if (client.state === 'off') await client.start();
+  if (client.sendText(text)) {
+    bubble('me', text);
+    pendingTyped.add(client.activeTurnId);
+  }
+}
+
+$('toggle').addEventListener('click', () => (client.state === 'off' ? client.start() : client.stop()));
+$('form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  sendText($('input').value);
+  $('input').value = '';
+});
+document.querySelectorAll('[data-lang]').forEach((b) =>
+  b.addEventListener('click', () => {
+    lang = b.dataset.lang;
+    document.querySelectorAll('[data-lang]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    client.setLang(lang);
+    renderMenu();
+    renderCart();
+    renderHints();
+    client.options.onStateChange(client.state);
+  }),
+);
+
+menu = await (await fetch('/menu.json')).json();
+renderMenu();
+renderCart();
+renderHints();
+</script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+{
+  "name": "voice-interaction",
+  "version": "0.1.0",
+  "description": "Full-duplex voice ordering for small drink shops: hands-free listening (Silero VAD in the browser), barge-in, sentence-by-sentence replies, AI cart tools.",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "audio_interaction.js",
+    "config_data.js",
+    "menu_store.js",
+    "order_agent.js",
+    "sentence_splitter.js",
+    "providers",
+    "public",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node app_order.js",
+    "test": "node --test \"test/*.test.js\"",
+    "test:e2e": "node e2e/run.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "voice",
+    "ordering",
+    "vad",
+    "bubble-tea",
+    "websocket"
+  ],
+  "license": "UNLICENSED",
+  "dependencies": {
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@ricky0123/vad-web": "0.0.30",
+    "onnxruntime-web": "1.22.0",
+    "playwright-core": "1.56.1"
+  }
+}
