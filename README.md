@@ -1,11 +1,10 @@
 # Voice Interaction（全双工实时语音点单）
 
-
-可以单独跑（自带演示页），也可以作为依赖装进店铺网站（比如 Hi Tea）。
+可以单独跑（自带演示页），也可以作为依赖装进任何店铺网站。
 
 ## 🌟 核心特性：全双工语音交互
 
-- **自动端点检测（Auto-Endpointing）**：浏览器里跑 Silero VAD（ONNX，[@ricky0123/vad-web](https://github.com/ricky0123/vad)），自动判断顾客什么时候开始、什么时候说完，说完就发送，不用按键。
+- **自动端点检测（Auto-Endpointing）**：浏览器里跑 Silero VAD（ONNX，@ricky0123/vad-web），自动判断顾客什么时候开始、什么时候说完，说完就发送，不用按键。
 - **智能打断（Barge-in）**：AI 播报回复时，顾客一开口，浏览器立刻停止播放，服务器取消这一轮还在进行的识别/大模型/语音合成请求。
 - **轮次号（turn id）机制**：每句话一个编号，每个阶段（ASR → LLM → TTS → 播放）都会检查"这一轮是否已取消"，取消的就丢掉。
 - **边想边说**：大模型一边输出，一边按句号/问号断句（超过 26 个字遇到逗号也断），每句马上送去合成并按顺序播放，第一句话很快就能听到。
@@ -39,21 +38,7 @@
 | `data/menu.json` | 演示菜单 |
 | `test/`、`e2e/` | 单元/集成测试，浏览器端到端测试 |
 
-### 和参考项目的对照
-
-| 参考项目（Python） | 本项目（JS） |
-|---|---|
-| `audio_interaction.py` 的 `VoiceAssistantController` | `audio_interaction.js`（服务器：想）+ `public/audio_client.js`（浏览器：听和说） |
-| 听线程：PyAudio + Silero VAD | 浏览器 AudioWorklet + Silero VAD（vad-web） |
-| 想线程：Paraformer ASR + 通义千问 | OpenAI 语音识别 + 对话（可换成任何 OpenAI 兼容接口） |
-| 说线程：CosyVoice + PyAudio 播放 | OpenAI 语音合成 + 浏览器 Web Audio 按序播放 |
-| `config_data.py` | `config_data.js` |
-| `rag.py` + `knowledge_base.py` + `vector_stores.py` | `order_agent.js` + `menu_store.js`（菜单直接进提示词，不需要向量库） |
-| `app_qa.py`（Streamlit） | `app_order.js` + `app_order.html` |
-| `requirements_audio.txt` | `package.json` |
-| `test_*.py` / `debug_*.py` | `test/`、`e2e/` |
-
-关键参数和参考项目一致：16kHz 单声道、32ms 一帧、静音 500ms 算说完、短于 250ms 丢弃、单句最长 12 秒。
+关键参数（都在 `config_data.js`）：16kHz 单声道、32ms 一帧、静音 500ms 算说完、短于 250ms 丢弃、单句最长 12 秒。
 
 ## 🛠️ 安装与运行
 
@@ -69,7 +54,7 @@ npm start                 # http://localhost:8787
 
 加 `?debug` 可以在浏览器控制台看到 `[VAD] [PLAYBACK] [BARGE_IN]` 日志；服务器终端会打印 `[ASR] [LLM] [TOOL] [TTS] [TURN]` 日志。
 
-## 🔌 接入自己的网站（比如 Hi Tea）
+## 🔌 接入自己的网站
 
 ```bash
 npm install github:mitchee30/voice-interaction
@@ -83,7 +68,7 @@ npm install github:mitchee30/voice-interaction
 const { createVoiceServer } = require('voice-interaction');
 
 const voice = createVoiceServer({
-  shopName: 'Hi Tea',
+  shopName: 'My Tea Shop',
   getMenu: () => buildVoiceMenu(), // 把店里的菜单转换成 data/menu.json 的格式（价格用"分"）
 });
 app.use(voice.assets());   // 提供 /voice/audio_client.js

@@ -3,7 +3,7 @@
 // Entry point: WebSocket server for the voice controller + the browser files.
 //
 //   const { createVoiceServer } = require('voice-interaction');
-//   const voice = createVoiceServer({ getMenu, shopName: 'Hi Tea' });
+//   const voice = createVoiceServer({ getMenu, shopName: 'My Tea Shop' });
 //   app.use(voice.assets());          // serves /voice/audio_client.js (+ VAD files if installed)
 //   voice.attach(httpServer);         // WebSocket at /voice/ws
 
