@@ -3,8 +3,6 @@
 
 可以单独跑（自带演示页），也可以作为依赖装进店铺网站（比如 Hi Tea）。
 
-> 结构和思路参考了 [xiaoxiaomugong/Intelligent-full-duplex-real-time-voice-assistant](https://github.com/xiaoxiaomugong/Intelligent-full-duplex-real-time-voice-assistant)（全双工语音 + 打断 + 边想边说）。代码是独立实现的 JS 版本，没有复制原项目代码。
-
 ## 🌟 核心特性：全双工语音交互
 
 - **自动端点检测（Auto-Endpointing）**：浏览器里跑 Silero VAD（ONNX，[@ricky0123/vad-web](https://github.com/ricky0123/vad)），自动判断顾客什么时候开始、什么时候说完，说完就发送，不用按键。
