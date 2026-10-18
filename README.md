@@ -75,8 +75,10 @@ npm start                 # http://localhost:8787
 ## 🔌 接入自己的网站（比如 Hi Tea）
 
 ```bash
-npm install github:mitchee30/voice-interaction#v0.1.0
+npm install github:mitchee30/voice-interaction
 ```
+
+（`package-lock.json` 会锁住装到的那个提交；想升级时再执行一次这条命令。）
 
 服务器（Express 示例）：
 
