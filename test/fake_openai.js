@@ -65,7 +65,11 @@ async function startFakeOpenAI({ apiKey = 'sk-test', transcripts = ['one pearl m
       const form = await new Request('http://x', { method: 'POST', headers: { 'content-type': req.headers['content-type'] }, body: raw }).formData();
       const file = form.get('file');
       calls.transcriptions.push({ model: form.get('model'), prompt: form.get('prompt'), filename: file.name, bytes: Buffer.from(await file.arrayBuffer()) });
-      const text = typeof transcripts === 'function' ? transcripts(calls.transcriptions.length) : transcripts[Math.min(asrIndex++, transcripts.length - 1)];
+      const bytes = calls.transcriptions[calls.transcriptions.length - 1].bytes;
+      const text =
+        typeof transcripts === 'function'
+          ? transcripts(calls.transcriptions.length, bytes)
+          : transcripts[Math.min(asrIndex++, transcripts.length - 1)];
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ text }));
     }
@@ -78,8 +82,19 @@ async function startFakeOpenAI({ apiKey = 'sk-test', transcripts = ['one pearl m
       const body = JSON.parse(raw);
       calls.speech.push(body);
       const audio = typeof speech === 'function' ? speech(body) : speech;
-      res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': audio.length });
-      return res.end(audio);
+      if (body.response_format !== 'pcm') {
+        res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': audio.length });
+        return res.end(audio);
+      }
+      // pcm is streamed with chunked transfer encoding, a piece at a time
+      res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
+      const parts = 3;
+      const size = Math.ceil(audio.length / parts) | 1; // odd sizes: pieces split samples
+      for (let i = 0; i < audio.length; i += size) {
+        res.write(audio.subarray(i, i + size));
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      return res.end();
     }
     res.writeHead(404);
     res.end();

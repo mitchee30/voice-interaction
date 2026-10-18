@@ -1,6 +1,6 @@
 {
   "name": "voice-interaction",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Full-duplex voice ordering for small drink shops: hands-free listening (Silero VAD in the browser), barge-in, sentence-by-sentence replies, AI cart tools.",
   "main": "index.js",
   "exports": {
@@ -14,6 +14,8 @@
     "menu_store.js",
     "order_agent.js",
     "sentence_splitter.js",
+    "turn_rules.js",
+    "async_utils.js",
     "providers",
     "public",
     "README.md"

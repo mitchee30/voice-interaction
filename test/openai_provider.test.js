@@ -6,8 +6,12 @@ const { startVoice, connect, fakeWav } = require('./helpers');
 const { startFakeOpenAI } = require('./fake_openai');
 const { createOpenAIProvider } = require('..');
 
+// 0.5 s of 24 kHz 16-bit "audio"
+const PCM = Buffer.alloc(24000);
+for (let i = 0; i < PCM.length; i += 2) PCM.writeInt16LE(Math.round(Math.sin(i / 20) * 8000), i);
+
 test('OpenAI provider: speech → order tool → spoken reply, with the right requests', async (t) => {
-  const api = await startFakeOpenAI({ transcripts: ['一杯珍珠奶茶少冰'] });
+  const api = await startFakeOpenAI({ transcripts: ['一杯珍珠奶茶少冰'], speech: PCM });
   t.after(() => api.close());
   const provider = createOpenAIProvider({ apiKey: api.apiKey, baseURL: api.baseURL });
   const srv = await startVoice({ provider });
@@ -29,9 +33,16 @@ test('OpenAI provider: speech → order tool → spoken reply, with the right re
   assert.equal(cart.line.options.ice, 'less');
   const end = await c.waitFor((m) => m.type === 'reply_end');
   assert.equal(end.text, '好的，加了珍珠奶茶（少冰）。还要别的吗？');
+  // streamed PCM: every frame holds whole 16-bit samples, each sentence ends with a marker
+  await c.waitFor((m) => m.type === 'timing');
   const audio = c.of('audio', 1);
-  assert.equal(audio.length, end.sentences);
-  assert.equal(String(audio[0].bytes), 'FAKEAUDIO');
+  assert.ok(audio.length >= end.sentences);
+  assert.ok(audio.every((a) => a.bytes.length % 2 === 0));
+  const perSentence = new Map();
+  for (const a of audio) perSentence.set(a.seq, Buffer.concat([perSentence.get(a.seq) || Buffer.alloc(0), a.bytes]));
+  assert.equal(perSentence.get(0).length, PCM.length);
+  assert.ok(perSentence.get(0).equals(PCM));
+  assert.deepEqual(c.of('sentence_audio_end', 1).map((m) => m.seq), [...Array(end.sentences).keys()]);
 
   // transcription request
   const asr = api.calls.transcriptions[0];
@@ -61,8 +72,27 @@ test('OpenAI provider: speech → order tool → spoken reply, with the right re
   assert.equal(api.calls.speech.length, end.sentences);
   assert.equal(api.calls.speech[0].model, 'gpt-4o-mini-tts');
   assert.equal(api.calls.speech[0].voice, 'marin');
-  assert.equal(api.calls.speech[0].response_format, 'mp3');
+  assert.equal(api.calls.speech[0].response_format, 'pcm');
   assert.ok(api.calls.speech[0].instructions);
+  c.close();
+});
+
+test('OpenAI provider: file mode (mp3) sends one frame per sentence', async (t) => {
+  const api = await startFakeOpenAI({ transcripts: ['hi'], speech: Buffer.from('FAKEMP3') });
+  t.after(() => api.close());
+  const provider = createOpenAIProvider({ apiKey: api.apiKey, baseURL: api.baseURL, ttsFormat: 'mp3' });
+  assert.equal(provider.capabilities.ttsStream, false);
+  const srv = await startVoice({ provider });
+  t.after(() => srv.close());
+  const c = await connect(srv.url);
+  c.send({ type: 'hello' });
+  const ready = await c.waitFor((m) => m.type === 'ready');
+  assert.deepEqual(ready.audioFormat, { type: 'file' });
+  c.send({ type: 'text', turn: 1, text: 'hello there' });
+  await c.waitFor((m) => m.type === 'reply_end');
+  await c.waitFor((m) => m.type === 'sentence_audio_end');
+  assert.equal(String(c.of('audio', 1)[0].bytes), 'FAKEMP3');
+  assert.equal(api.calls.speech[0].response_format, 'mp3');
   c.close();
 });
 

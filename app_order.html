@@ -79,6 +79,9 @@
   .msg.bot { align-self: flex-start; background: var(--bot); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
   .msg.bot.cut::after { content: " （被打断）"; color: var(--muted); font-size: 13px; }
   .msg.sys { align-self: center; color: var(--muted); font-size: 13px; background: none; padding: 2px; }
+  .msg .lat { display: block; margin-top: 4px; font-size: 12px; color: var(--muted); }
+  .st-waiting .dot { background: var(--live); }
+  .st-paused .dot { background: var(--line); }
   .hints { display: flex; flex-wrap: wrap; gap: 8px; }
   .hints button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 6px 12px; font-size: 14px; }
   form { display: flex; gap: 8px; padding: 12px 24px 18px; border-top: 1px solid var(--line); background: var(--bg); }
@@ -145,6 +148,8 @@ const T = {
   zh: {
     on: '⏹ 关闭语音交互', off: '▶️ 开启全双工语音交互',
     off_s: '未开启', connecting: '连接中…', idle: '正在听，直接说就行', hearing: '你在说话…', thinking: '正在想…', speaking: '正在说，开口就能打断',
+    waiting: '还在听，你可以接着说…', paused: '麦克风已暂停，点上面按钮继续', resume: '▶️ 继续语音交互',
+    err_rate_limited: '说得太快了，稍等一下再试。', err_provider: 'AI 服务出了点问题，请再说一次。', err_disconnected: '连接断了，请点按钮重新开始。',
     idle_text: '已连接，打字点单', empty: '还没有饮品', mock: '演示模式：服务器没有配置 OPENAI_API_KEY，只能打字，回复用浏览器朗读。',
     openai: '实时语音：OpenAI 识别 + 回答 + 朗读。', mic: '麦克风打不开，可以先打字点单。',
     hints: ['两杯珍珠奶茶，一杯少冰', '芋泥波波奶茶换成燕麦奶', '杨枝甘露去冰半糖', '有什么推荐', '就这些了'],
@@ -152,6 +157,8 @@ const T = {
   en: {
     on: '⏹ Stop voice', off: '▶️ Start full-duplex voice',
     off_s: 'Off', connecting: 'Connecting…', idle: 'Listening, just talk', hearing: 'You are talking…', thinking: 'Thinking…', speaking: 'Talking, speak to interrupt',
+    waiting: 'Still listening, go on…', paused: 'Mic paused, tap the button to continue', resume: '▶️ Resume voice',
+    err_rate_limited: 'Too many requests, please wait a moment.', err_provider: 'The AI service had a problem, please say it again.', err_disconnected: 'Connection lost, tap the button to start again.',
     idle_text: 'Connected, type to order', empty: 'No drinks yet', mock: 'Demo mode: no OPENAI_API_KEY on the server, typing only; replies are read by the browser.',
     openai: 'Live voice: OpenAI speech recognition, answers and speech.', mic: 'Could not open the microphone. You can still type.',
     hints: ['Two pearl milk teas, one with less ice', 'Make the taro one oat milk', 'Mango pomelo sago, no ice, half sugar', 'What do you recommend?', "That's all"],
@@ -253,11 +260,13 @@ function renderHints() {
 }
 
 // ---------- voice client ----------
+const idleParam = Number(params.get('idle'));
 const client = new VoiceAssistantClient({
   lang,
   debug: params.has('debug'),
   voice: !params.has('novoice'),
   assets: LOCAL_VENDOR ? { ort: '/voice/vendor/ort/', vad: '/voice/vendor/vad/' } : undefined,
+  audio: idleParam ? { idleStopMs: idleParam } : undefined,
   getCart: () => cart,
   onCart: (op) => {
     log.push(['cart', op]);
@@ -269,15 +278,13 @@ const client = new VoiceAssistantClient({
   },
   onStateChange: (s) => {
     log.push(['state', s]);
-    document.getElementById('status').className = `status st-${s}`;
-    const voiceOn = client.voiceEnabled;
-    $('statusText').textContent = s === 'off' ? t('off_s') : s === 'idle' && !voiceOn ? t('idle_text') : t(s);
-    $('toggle').textContent = s === 'off' ? t('off') : t('on');
-    $('toggle').classList.toggle('on', s !== 'off');
+    renderStatus();
   },
-  onUserSpeech: (text, turn) => {
-    log.push(['user', turn, text]);
-    if (!pendingTyped.delete(turn)) bubble('me', text);
+  onUserSpeech: (text, turn, { replaces }) => {
+    log.push(['user', turn, text, replaces]);
+    // the customer paused mid-sentence: the earlier half is now part of this one
+    for (const r of replaces) document.querySelector(`.msg.me[data-turn="${r}"]`)?.remove();
+    if (!pendingTyped.delete(turn)) bubble('me', text).dataset.turn = turn;
     botBubble = null;
   },
   onAssistantReplyStart: (turn) => {
@@ -295,15 +302,35 @@ const client = new VoiceAssistantClient({
   },
   onBargeIn: (turn) => {
     log.push(['bargein', turn]);
-    const b = document.querySelector(`.msg.bot[data-turn="${turn}"]`);
-    if (b) b.classList.add('cut');
+    document.querySelector(`.msg.bot[data-turn="${turn}"]`)?.classList.add('cut');
+  },
+  onBargeInIgnored: (turn) => log.push(['bargein_ignored', turn]),
+  onPaused: (reason) => log.push(['paused', reason]),
+  onTiming: (tm) => {
+    log.push(['timing', tm]);
+    const b = document.querySelector(`.msg.bot[data-turn="${tm.turn}"]`);
+    const ms = tm.responseMs ?? tm.firstAudioMs;
+    if (b && ms != null && !b.querySelector('.lat')) {
+      const span = document.createElement('span');
+      span.className = 'lat';
+      span.textContent = (lang === 'en' ? '⏱ first sound after ' : '⏱ 开口到听到回答 ') + (ms / 1000).toFixed(1) + 's';
+      b.appendChild(span);
+    }
   },
   onError: (e) => {
     log.push(['error', e]);
     if (e.code === 'mic' || e.code === 'mic_denied') $('note').textContent = t('mic');
-    else bubble('sys', e.message || 'error');
+    else bubble('sys', T[lang]['err_' + e.code] || e.message || 'error');
   },
 });
+function renderStatus() {
+  const s = client.state;
+  document.getElementById('status').className = `status st-${s}`;
+  const voiceOn = client.voiceEnabled;
+  $('statusText').textContent = s === 'off' ? t('off_s') : s === 'idle' && !voiceOn ? t('idle_text') : t(s);
+  $('toggle').textContent = s === 'off' ? t('off') : s === 'paused' ? t('resume') : t('on');
+  $('toggle').classList.toggle('on', s !== 'off' && s !== 'paused');
+}
 window.__client = client;
 
 // typed messages show right away instead of waiting for the transcript
@@ -318,7 +345,7 @@ async function sendText(text) {
   }
 }
 
-$('toggle').addEventListener('click', () => (client.state === 'off' ? client.start() : client.stop()));
+$('toggle').addEventListener('click', () => (client.state === 'off' || client.state === 'paused' ? client.start() : client.stop()));
 $('form').addEventListener('submit', (e) => {
   e.preventDefault();
   sendText($('input').value);
@@ -332,7 +359,7 @@ document.querySelectorAll('[data-lang]').forEach((b) =>
     renderMenu();
     renderCart();
     renderHints();
-    client.options.onStateChange(client.state);
+    renderStatus();
   }),
 );
 

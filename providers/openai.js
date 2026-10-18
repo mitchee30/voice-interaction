@@ -127,26 +127,41 @@ function createOpenAIProvider(options = {}) {
     if (done.length) yield { type: 'tool_calls', calls: done };
   }
 
-  async function synthesize(input, { signal } = {}) {
-    const body = { model: cfg.ttsModel, voice: cfg.ttsVoice, input, response_format: cfg.ttsFormat };
+  function speechRequest(input, format, signal) {
+    const body = { model: cfg.ttsModel, voice: cfg.ttsVoice, input, response_format: format };
     if (cfg.ttsInstructions && /^gpt-/.test(cfg.ttsModel)) body.instructions = cfg.ttsInstructions;
-    const res = await fetchImpl(`${base}/audio/speech`, {
+    return fetchImpl(`${base}/audio/speech`, {
       method: 'POST',
       headers: { ...auth, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       signal: withTimeout(signal, cfg.timeoutMs),
     });
-    if (!res.ok) throw await failure(res, 'speech');
-    return { audio: Buffer.from(await res.arrayBuffer()), mime: MIME[cfg.ttsFormat] || 'application/octet-stream' };
   }
 
+  /** Whole audio file for one sentence (mp3, wav, ...). */
+  async function synthesize(input, { signal } = {}) {
+    const format = cfg.ttsFormat === 'pcm' ? 'wav' : cfg.ttsFormat;
+    const res = await speechRequest(input, format, signal);
+    if (!res.ok) throw await failure(res, 'speech');
+    return { audio: Buffer.from(await res.arrayBuffer()), mime: MIME[format] || 'application/octet-stream' };
+  }
+
+  /** Raw 24 kHz 16-bit mono PCM, yielded while OpenAI is still generating it. */
+  async function* synthesizeStream(input, { signal } = {}) {
+    const res = await speechRequest(input, 'pcm', signal);
+    if (!res.ok) throw await failure(res, 'speech');
+    for await (const chunk of res.body) yield Buffer.from(chunk);
+  }
+
+  const streaming = cfg.ttsFormat === 'pcm';
   return {
     name: 'openai',
-    capabilities: { asr: true, tts: true },
-    config: { chatModel: cfg.chatModel, asrModel: cfg.asrModel, ttsModel: cfg.ttsModel, ttsVoice: cfg.ttsVoice },
+    capabilities: { asr: true, tts: true, ttsStream: streaming, ttsSampleRate: cfg.ttsSampleRate || 24000 },
+    config: { chatModel: cfg.chatModel, asrModel: cfg.asrModel, ttsModel: cfg.ttsModel, ttsVoice: cfg.ttsVoice, ttsFormat: cfg.ttsFormat },
     transcribe,
     chat,
     synthesize,
+    synthesizeStream,
   };
 }
 

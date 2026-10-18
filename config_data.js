@@ -19,12 +19,22 @@ module.exports = {
   // the speaker is less likely to interrupt it.
   bargeInThreshold: 0.7,
   bargeInMinMs: 400,
+  idleStopMs: 90000, // stop listening after this long without speech (0 = never)
+
+  // ---------- turn taking ----------
+  // Talking over the assistant first PAUSES it. If the words turn out to be its
+  // own echo, a "嗯 / 对 / ok", or nothing, playback continues where it stopped;
+  // otherwise the old reply is dropped. (false = stop immediately on any speech)
+  smartBargeIn: true,
+  // An utterance that ends like "…，还有" / "… and" waits this long for the rest.
+  incompleteGraceMs: 1200,
 
   // ---------- speaking: how the streamed reply is cut for TTS ----------
   sentenceDelimiters: ['。', '！', '？', '；', '\n', '!', '?'],
   softDelimiters: ['，', ','],
   softSplitLength: 26, // past this many characters a comma also ends a piece
   maxPieceLength: 90,
+  ttsConcurrency: 3, // TTS requests in flight per conversation
 
   // ---------- models ----------
   provider: env.VOICE_PROVIDER || 'auto', // auto | openai | mock
@@ -35,8 +45,12 @@ module.exports = {
     asrModel: env.OPENAI_ASR_MODEL || 'gpt-transcribe',
     ttsModel: env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
     ttsVoice: env.OPENAI_TTS_VOICE || 'marin',
-    ttsFormat: env.OPENAI_TTS_FORMAT || 'mp3',
-    ttsInstructions: 'You are friendly staff at a bubble tea shop. Speak warmly, clearly and a little briskly.',
+    // pcm = raw 24 kHz 16-bit audio streamed while it is generated (fastest).
+    // mp3 / wav / aac / opus = whole file per sentence.
+    ttsFormat: env.OPENAI_TTS_FORMAT || 'pcm',
+    ttsSampleRate: 24000,
+    ttsInstructions:
+      'You are friendly staff at a bubble tea shop. Speak warmly, clearly and a little briskly. Chinese text is Mandarin: use natural standard Mandarin pronunciation.',
     reasoningEffort: env.OPENAI_REASONING_EFFORT || undefined,
     maxReplyTokens: 400,
     timeoutMs: 20000,
@@ -52,6 +66,15 @@ module.exports = {
   maxTurnsPerDay: Number(env.VOICE_MAX_TURNS_PER_DAY || 3000), // whole server, 0 = unlimited
   maxAudioSeconds: 15,
   maxTextChars: 500,
+  maxTurnsPerIpPerHour: Number(env.VOICE_MAX_TURNS_PER_IP_PER_HOUR || 200),
+  maxConnectionsPerIp: 10,
+  // Behind a proxy (Render, Heroku, Cloudflare, nginx) the client IP is in
+  // X-Forwarded-For. Only turn this on when such a proxy is in front.
+  trustProxy: env.VOICE_TRUST_PROXY === '1' || env.VOICE_TRUST_PROXY === 'true',
+
+  // ---------- sessions ----------
+  sessionResumeMs: 5 * 60 * 1000, // a reconnect within this time keeps the conversation
+  maxStoredSessions: 2000,
 
   // ---------- server ----------
   wsPath: '/voice/ws',

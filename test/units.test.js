@@ -7,6 +7,8 @@ const { normalizeMenu, buildLine, sanitizeCart, applyOp, lineLabel, cartTotal, u
 const { plan } = require('../providers/mock');
 const { buildTools, buildSystemPrompt, asrHint } = require('../order_agent');
 const { MENU } = require('./helpers');
+const rules = require('../turn_rules');
+const { sleep, Limiter, BufferedStream } = require('../async_utils');
 
 const menu = normalizeMenu(MENU);
 
@@ -128,4 +130,62 @@ test('mock: changes and removals act on the cart', () => {
   assert.deepEqual(calls('珍珠奶茶换成燕麦奶', cart), [['update_cart_line', { line_id: 'b', options: { milk: 'oat' } }]]);
   assert.deepEqual(calls('珍珠奶茶改成两杯', cart), [['update_cart_line', { line_id: 'b', qty: 2 }]]);
   assert.deepEqual(calls('珍珠奶茶不要冰'), [['add_to_cart', { item_id: 'pearl-milk-tea', qty: 1, options: { ice: 'none' } }]]);
+});
+
+
+test('rules: backchannels are recognized, real requests are not', () => {
+  for (const t of ['嗯。', '嗯嗯', '好的', '对对', 'OK.', 'Uh huh', 'mhm', 'okay']) assert.ok(rules.isBackchannel(t), t);
+  for (const t of ['不对', '等一下', 'wait', 'no', '换成燕麦奶', '好的，再来一杯']) assert.ok(!rules.isBackchannel(t), t);
+});
+
+test('rules: echo of the assistant vs. the customer repeating a short option', () => {
+  const spoken = '好的，我帮你加了一杯珍珠奶茶，少冰。还要别的吗？';
+  assert.ok(rules.isEcho('我帮你加了一杯珍珠奶茶', spoken));
+  assert.ok(rules.isEcho('我帮你家了一杯珍珠奶', spoken), 'misrecognized echo still matches');
+  assert.ok(!rules.isEcho('珍珠奶茶', spoken), 'short answers are never echo');
+  assert.ok(!rules.isEcho('换成燕麦奶', spoken));
+  assert.ok(rules.isEcho('I added one pearl milk tea', 'OK, I added one pearl milk tea. Anything else?'));
+  assert.ok(!rules.isEcho('make it less sugar', 'OK, I added one pearl milk tea. Anything else?'));
+});
+
+test('rules: unfinished sentences', () => {
+  for (const t of ['我要一杯珍珠奶茶，还有', '一杯', '我要一杯……', '还有。', 'one pearl milk tea and', 'can I get']) assert.ok(rules.looksIncomplete(t), t);
+  for (const t of ['我要一杯珍珠奶茶。', '少冰', '可以给我推荐一下吗', 'one pearl milk tea.', '好的']) assert.ok(!rules.looksIncomplete(t), t);
+});
+
+test('rules: typical speech-recognition hallucinations', () => {
+  for (const t of ['谢谢观看！', '请不吝点赞 订阅 转发 打赏支持明镜与点点栏目', 'Thanks for watching!', '……', '♪♪']) assert.ok(rules.isHallucination(t), t);
+  for (const t of ['谢谢', '一杯珍珠奶茶', 'thank you']) assert.ok(!rules.isHallucination(t), t);
+});
+
+test('async: Limiter caps concurrency, BufferedStream keeps order', async () => {
+  const lim = new Limiter(2);
+  let running = 0;
+  let peak = 0;
+  await Promise.all(
+    [1, 2, 3, 4, 5].map(() =>
+      lim.run(async () => {
+        running++;
+        peak = Math.max(peak, running);
+        await sleep(10);
+        running--;
+      }),
+    ),
+  );
+  assert.equal(peak, 2);
+
+  const bs = new BufferedStream();
+  bs.push('a');
+  setTimeout(() => {
+    bs.push('b');
+    bs.end();
+  }, 10);
+  const got = [];
+  for await (const x of bs) got.push(x);
+  assert.deepEqual(got, ['a', 'b']);
+
+  const ac = new AbortController();
+  const p = sleep(1000, ac.signal);
+  ac.abort();
+  await assert.rejects(p, /aborted/);
 });

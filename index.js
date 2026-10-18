@@ -50,6 +50,61 @@ function dailyBudget(max) {
   };
 }
 
+/** Turns per client IP in a sliding hour (protects against one abusive client). */
+function ipBudget(maxPerHour) {
+  if (!maxPerHour) return null;
+  const seen = new Map();
+  return {
+    take(ip) {
+      const now = Date.now();
+      const list = (seen.get(ip) || []).filter((t) => now - t < 3600000);
+      if (list.length >= maxPerHour) {
+        seen.set(ip, list);
+        return false;
+      }
+      list.push(now);
+      seen.set(ip, list);
+      return true;
+    },
+    prune() {
+      const now = Date.now();
+      for (const [ip, list] of seen) if (!list.some((t) => now - t < 3600000)) seen.delete(ip);
+    },
+  };
+}
+
+/** Conversations kept for a few minutes after a disconnect (phone locked, network switch). */
+function sessionStore(ttlMs, maxEntries) {
+  const map = new Map();
+  return {
+    save(id, data) {
+      map.delete(id);
+      map.set(id, { data, expires: Date.now() + ttlMs });
+      while (map.size > maxEntries) map.delete(map.keys().next().value);
+    },
+    take(id) {
+      const e = map.get(id);
+      map.delete(id);
+      return e && e.expires > Date.now() ? e.data : null;
+    },
+    prune() {
+      const now = Date.now();
+      for (const [id, e] of map) if (e.expires <= now) map.delete(id);
+    },
+    get size() {
+      return map.size;
+    },
+  };
+}
+
+function clientIp(req, trustProxy) {
+  if (trustProxy) {
+    const fwd = req.headers['x-forwarded-for'];
+    if (fwd) return String(fwd).split(',')[0].trim();
+  }
+  return req.socket.remoteAddress || 'unknown';
+}
+
 function originAllowed(req, allowed) {
   const origin = req.headers.origin;
   if (!origin) return true; // not a browser (curl, tests)
@@ -69,7 +124,9 @@ function originAllowed(req, allowed) {
  *   instructions        extra notes for the AI ("we close at 9pm", ...)
  *   defaultLang         'zh' | 'en'
  *   allowedOrigins      origins allowed to connect; default: same host only
- *   maxTurnsPerMinute, maxTurnsPerDay, maxAudioSeconds   see config_data.js
+ *   trustProxy          read the client IP from X-Forwarded-For (Render, nginx, ...)
+ *   maxTurnsPerMinute, maxTurnsPerDay, maxTurnsPerIpPerHour, maxConnectionsPerIp,
+ *   maxAudioSeconds, incompleteGraceMs, sessionResumeMs   see config_data.js
  *   logLevel, log(level, line)
  *   onUserSpeech, onAssistantReplyStart, onAssistantReplyChunk, onAssistantReplyEnd, onCartChange
  */
@@ -77,21 +134,36 @@ function createVoiceServer(options = {}) {
   if (typeof options.getMenu !== 'function') throw new Error('createVoiceServer: getMenu() is required');
   const log = makeLogger(options.logLevel || config.logLevel, options.log);
   const provider = resolveProvider(options.provider, log);
+  const pick = (key) => (options[key] === undefined ? config[key] : options[key]);
+  const trustProxy = pick('trustProxy');
+  const sessions = sessionStore(pick('sessionResumeMs'), config.maxStoredSessions);
+  const perIp = ipBudget(pick('maxTurnsPerIpPerHour'));
   const controllerOptions = {
     ...options,
     provider,
-    budget: dailyBudget(options.maxTurnsPerDay === undefined ? config.maxTurnsPerDay : options.maxTurnsPerDay),
+    sessions,
+    ipBudget: perIp,
+    budget: dailyBudget(pick('maxTurnsPerDay')),
   };
-  const maxAudio = 4 + 44 + config.sampleRate * 2 * (options.maxAudioSeconds || config.maxAudioSeconds);
+  const maxAudio = 12 + 44 + config.sampleRate * 2 * (options.maxAudioSeconds || config.maxAudioSeconds);
+  const connectionsPerIp = new Map();
+  const maxConnectionsPerIp = pick('maxConnectionsPerIp');
 
   const wss = new WebSocketServer({ noServer: true, maxPayload: maxAudio + 1024, perMessageDeflate: false });
   wss.on('connection', (ws, req) => {
+    const ip = clientIp(req, trustProxy);
+    connectionsPerIp.set(ip, (connectionsPerIp.get(ip) || 0) + 1);
+    ws.on('close', () => {
+      const n = (connectionsPerIp.get(ip) || 1) - 1;
+      if (n > 0) connectionsPerIp.set(ip, n);
+      else connectionsPerIp.delete(ip);
+    });
     ws.isAlive = true;
     ws.on('pong', () => {
       ws.isAlive = true;
     });
     ws.on('error', (err) => log('WS', 0, `socket error: ${err.message}`, 'warn'));
-    new VoiceAssistantController(ws, controllerOptions);
+    new VoiceAssistantController(ws, controllerOptions, { ip });
     log('CTRL', 0, `client connected (${provider.name})`);
   });
 
@@ -105,14 +177,22 @@ function createVoiceServer(options = {}) {
       ws.isAlive = false;
       ws.ping();
     }
+    sessions.prune();
+    if (perIp) perIp.prune();
   }, config.heartbeatMs);
   heartbeat.unref();
 
+  function refuse(socket, status) {
+    socket.write(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
+    socket.destroy();
+  }
+
   function handleUpgrade(req, socket, head) {
-    if (!originAllowed(req, options.allowedOrigins)) {
-      socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
-      socket.destroy();
-      return;
+    if (!originAllowed(req, options.allowedOrigins)) return refuse(socket, '403 Forbidden');
+    const ip = clientIp(req, trustProxy);
+    if (maxConnectionsPerIp && (connectionsPerIp.get(ip) || 0) >= maxConnectionsPerIp) {
+      log('CTRL', 0, `too many connections from ${ip}`, 'warn');
+      return refuse(socket, '429 Too Many Requests');
     }
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
   }

@@ -11,7 +11,7 @@ async function startVoice(opts = {}) {
     res.writeHead(404);
     res.end();
   });
-  const voice = createVoiceServer({ getMenu: () => MENU, shopName: 'Test Tea', logLevel: 'silent', ...opts });
+  const voice = createVoiceServer({ getMenu: () => MENU, shopName: 'Test Tea', logLevel: 'silent', incompleteGraceMs: 0, ...opts });
   voice.attach(server, '/voice/ws');
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const { port } = server.address();
@@ -47,9 +47,12 @@ async function connect(url, headers) {
     ws,
     msgs,
     send: (obj) => ws.send(JSON.stringify(obj)),
-    sendAudio(turn, wav) {
-      const head = Buffer.alloc(4);
-      head.writeUInt32BE(turn);
+    /** [u32 turn][u32 interrupts][i32 heard][WAV], like the browser sends. */
+    sendAudio(turn, wav, { interrupts = 0, heard = -1 } = {}) {
+      const head = Buffer.alloc(12);
+      head.writeUInt32BE(turn, 0);
+      head.writeUInt32BE(interrupts, 4);
+      head.writeInt32BE(heard, 8);
       ws.send(Buffer.concat([head, wav]));
     },
     waitFor(pred, ms = 3000) {

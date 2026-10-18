@@ -192,6 +192,28 @@ function plan(userText, { menu, cart }) {
   return { calls, notes, zh };
 }
 
+const ZH_COUNT = ['', '一', '两', '三', '四', '五', '六', '七', '八', '九', '十'];
+
+/** "两杯珍珠奶茶，少冰，加布丁" / "2 Pearl Milk Tea, less ice, plus Pudding" — easy to read aloud. */
+function spokenLabel(line, menu, zh) {
+  const item = menu.itemById.get(line.itemId);
+  if (!item) return line.itemId;
+  const lang = zh ? 'zh' : 'en';
+  const bits = [];
+  for (const gid of item.options) {
+    const g = menu.groupById.get(gid);
+    const cid = line.options && line.options[gid];
+    if (cid && cid !== g.default) bits.push(nameIn(g.choices.find((c) => c.id === cid).name, lang));
+  }
+  for (const a of line.addons || []) {
+    const ad = menu.addonById.get(a);
+    if (ad) bits.push((zh ? '加' : 'plus ') + nameIn(ad.name, lang));
+  }
+  const name = nameIn(item.name, lang);
+  const head = zh ? `${ZH_COUNT[line.qty] || line.qty}杯${name}` : `${line.qty} ${name}`;
+  return [head, ...bits].join(zh ? '，' : ', ');
+}
+
 function explain(error, zh) {
   const sold = /^(.+) is sold out$/.exec(error);
   if (sold) return zh ? `${sold[1]}今天卖完了` : `${sold[1]} is sold out today`;
@@ -203,7 +225,7 @@ function replyAfterTools(results, zh, menu) {
   const bad = results.filter((r) => !r.ok);
   const parts = [];
   if (ok.length) {
-    const what = ok.map((r) => (r.line ? lineLabel(r.line, menu, zh ? 'zh' : 'en') : r.label)).join(zh ? '，' : ', ');
+    const what = ok.map((r) => (r.line ? spokenLabel(r.line, menu, zh) : r.label)).join(zh ? '；' : '; ');
     const verbs = { add_to_cart: zh ? '加了' : 'Added', update_cart_line: zh ? '改好了' : 'Updated', remove_cart_line: zh ? '删掉了' : 'Removed' };
     const v = verbs[ok[0].tool] || (zh ? '好了' : 'Done');
     parts.push(zh ? `好的，${v}${what}。` : `OK. ${v} ${what}.`);
